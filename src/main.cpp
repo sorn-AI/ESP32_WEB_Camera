@@ -5,8 +5,8 @@
 #include <ESPmDNS.h>
 
 // ตั้งค่า WiFi
-const char* ssid = "Sorn-A-2.4G";          // เปลี่ยนเป็น WiFi SSID ของคุณ
-const char* password = "Sorn-0936152452";  // เปลี่ยนเป็น WiFi Password ของคุณ
+const char* ssid = "ปลี่ยนเป็น WiFi SSID ของคุณ";          // เปลี่ยนเป็น WiFi SSID ของคุณ
+const char* password = "เปลี่ยนเป็น WiFi Password ของคุณ";  // เปลี่ยนเป็น WiFi Password ของคุณ
 
 // ตั้งค่า mDNS hostname
 const char* hostname = "camera01";  // เข้าถึงผ่าน http://camera01.local
