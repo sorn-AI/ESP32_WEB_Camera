@@ -1,0 +1,334 @@
+# ESP32-S3 Camera Web Streaming Project
+# สร้างโดย: Sorn
+# วันที่: 2026-01-02
+# บอร์ด: CB008 ESP32-S3 CAM N16R8 OV5640
+
+================================================================================
+สรุปโปรเจค: ESP32-S3 Camera Web Server
+================================================================================
+
+## วัตถุประสงค์
+สร้างระบบกล้อง IP Camera โดยใช้ ESP32-S3 พร้อมกล้อง OV5640 ที่สามารถ
+Stream วิดีโอแบบ Real-time ผ่านเว็บเบราว์เซอร์
+
+## ฮาร์ดแวร์ที่ใช้
+- บอร์ด: CB008 ESP32-S3 CAM N16R8 OV5640
+- MCU: Expressif ESP32-S3 WROOM (N16R8)
+  - Flash: 16MB
+  - PSRAM: 8MB
+  - WiFi + Bluetooth
+- กล้อง: OV5640 (5 Megapixel)
+- LED Status: GPIO 2
+- 2 USB Ports:
+  - USB-OTG (Native USB)
+  - USB-UART (CH340/CP2102)
+
+## ฟีเจอร์หลัก
+1. ✅ Real-time MJPEG Video Streaming
+2. ✅ WiFi Connection (2.4GHz)
+3. ✅ mDNS Support (http://camera01.local)
+4. ✅ LED Status Indicator
+5. ✅ Serial Debug Output
+6. ✅ Responsive Web Interface
+7. ✅ Auto Camera Configuration
+
+## การตั้งค่า WiFi
+- SSID: Sorn-A-2.4G
+- Password: Sorn-0936152452
+- หมายเหตุ: ESP32 รองรับเฉพาะ WiFi 2.4GHz เท่านั้น
+
+## การเข้าถึง
+1. ผ่าน mDNS: http://camera01.local (macOS/iOS/Linux)
+2. ผ่าน IP Address: http://192.168.1.xxx
+   (ดู IP จาก Serial Monitor)
+
+## LED Status Indicator
+- LED ติดค้าง: กำลังเริ่มระบบ/กำลัง Initialize
+- กระพริบ 1 วินาที: WiFi เชื่อมต่อสำเร็จ (ทำงานปกติ)
+- กระพริบ 0.5 วินาที 3 ครั้ง + พัก 1 วินาที: WiFi เชื่อมต่อไม่สำเร็จ
+- กระพริบเร็ว 0.1 วินาที: กล้อง Initialize ล้มเหลว
+
+================================================================================
+FLOWCHART การทำงานของระบบ
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                          SYSTEM START                               │
+│                         (Power On/Reset)                            │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   STEP 1: Initialize Hardware                       │
+│                                                                     │
+│  1. Serial.begin(115200)                                           │
+│  2. pinMode(LED_PIN, OUTPUT)                                       │
+│  3. digitalWrite(LED_PIN, HIGH) ← LED ติดค้าง                     │
+│  4. แสดงข้อความ "ESP32-S3 Camera Server Starting..."              │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              STEP 2: Initialize Camera (initCamera)                 │
+│                                                                     │
+│  1. ตั้งค่า Camera Pins:                                           │
+│     - XCLK: GPIO 15                                                │
+│     - SIOD/SIOC: GPIO 4/5 (I2C)                                    │
+│     - Data Pins: Y2-Y9 (GPIO 11,9,8,10,12,18,17,16)               │
+│     - VSYNC/HREF/PCLK: GPIO 6,7,13                                │
+│                                                                     │
+│  2. ตั้งค่าความละเอียด:                                            │
+│     - มี PSRAM: UXGA (1600x1200), Quality 10                      │
+│     - ไม่มี PSRAM: SVGA (800x600), Quality 12                     │
+│                                                                     │
+│  3. ตั้งค่า Sensor (Brightness, Contrast, White Balance, etc.)    │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+                    ┌────────┴────────┐
+                    │   สำเร็จ?      │
+                    └────────┬────────┘
+                             │
+                    ┌────────┴────────┐
+                   NO                YES
+                    │                 │
+                    ▼                 ▼
+    ┌───────────────────────┐  ┌─────────────────────────┐
+    │  ERROR: Camera Fail   │  │  SUCCESS: Camera Ready  │
+    │  LED กระพริบเร็ว 0.1s │  │  แสดง "Camera           │
+    │  แสดง Error 0x105     │  │  initialized            │
+    │  System Halt (Loop)   │  │  successfully"          │
+    └───────────────────────┘  └──────────┬──────────────┘
+                                          │
+                                          ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   STEP 3: Connect to WiFi                           │
+│                                                                     │
+│  1. WiFi.begin(ssid, password)                                     │
+│  2. WiFi.setSleep(false)                                           │
+│  3. รอเชื่อมต่อ (Timeout 30 วินาที)                                │
+│     - ระหว่างรอ: LED กระพริบ 0.25 วินาที                          │
+│     - แสดง "." ทุก 250ms                                           │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+                    ┌────────┴────────┐
+                    │  เชื่อมต่อได้?  │
+                    └────────┬────────┘
+                             │
+                    ┌────────┴────────┐
+                   NO                YES
+                    │                 │
+                    ▼                 ▼
+    ┌───────────────────────┐  ┌─────────────────────────────┐
+    │  ERROR: WiFi Timeout  │  │  SUCCESS: WiFi Connected    │
+    │  แสดง Error Message   │  │  แสดง IP Address           │
+    │  wifiConnected=false  │  │  แสดง MAC Address          │
+    │  LED ดับ              │  │  wifiConnected=true         │
+    │  Return (ไป loop)     │  └──────────┬──────────────────┘
+    └───────────────────────┘             │
+            │                             ▼
+            │              ┌─────────────────────────────────────┐
+            │              │  STEP 4: Start mDNS Responder       │
+            │              │                                     │
+            │              │  1. MDNS.begin("camera01")         │
+            │              │  2. MDNS.addService("http","tcp",80)│
+            │              │  3. แสดง "http://camera01.local"   │
+            │              └──────────┬──────────────────────────┘
+            │                         │
+            │                         ▼
+            │              ┌─────────────────────────────────────┐
+            │              │  STEP 5: Start Web Server           │
+            │              │                                     │
+            │              │  1. httpd_start (Port 80)          │
+            │              │  2. Register URI Handlers:          │
+            │              │     - GET /      → index_handler    │
+            │              │     - GET /stream → stream_handler  │
+            │              │  3. แสดง "Camera server started"   │
+            │              └──────────┬──────────────────────────┘
+            │                         │
+            │                         ▼
+            │              ┌─────────────────────────────────────┐
+            │              │  SYSTEM READY!                      │
+            │              │  แสดง:                              │
+            │              │  - "CAMERA READY!"                 │
+            │              │  - "http://camera01.local"         │
+            │              │  - "http://192.168.1.xxx"          │
+            │              └──────────┬──────────────────────────┘
+            │                         │
+            └─────────────────────────┴──────────────────────────┐
+                                      │                          │
+                                      ▼                          │
+┌─────────────────────────────────────────────────────────────────────┐
+│                          MAIN LOOP                                  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  IF wifiConnected == true:                                   │ │
+│  │    → LED กระพริบ 1 วินาที (ON 1s, OFF 1s)                   │ │
+│  │    → ระบบทำงานปกติ                                           │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  IF wifiConnected == false:                                  │ │
+│  │    → LED กระพริบเร็ว 3 ครั้ง (ON/OFF 0.5s) + พัก 1s        │ │
+│  │    → แสดงสถานะ Error                                         │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ (Loop ต่อไปเรื่อยๆ)
+                                      └────────────┐
+                                                   │
+                                                   ▼
+
+================================================================================
+WEB SERVER REQUEST HANDLING
+================================================================================
+
+                        ┌─────────────────────┐
+                        │  Browser Request    │
+                        └──────────┬──────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    │                             │
+                    ▼                             ▼
+        ┌──────────────────────┐      ┌──────────────────────┐
+        │  GET /               │      │  GET /stream         │
+        │  (index_handler)     │      │  (stream_handler)    │
+        └──────────┬───────────┘      └──────────┬───────────┘
+                   │                             │
+                   ▼                             ▼
+        ┌──────────────────────┐      ┌──────────────────────────────┐
+        │  ส่ง HTML Page       │      │  MJPEG Streaming Loop:       │
+        │  - Title             │      │                              │
+        │  - CSS Styles        │      │  1. esp_camera_fb_get()      │
+        │  - <img src="/stream>│      │  2. แปลงเป็น JPEG (ถ��าต้อง) │
+        │                      │      │  3. ส่ง HTTP chunk:          │
+        └──────────────────────┘      │     - Content-Type           │
+                                      │     - Content-Length         │
+                                      │     - JPEG Data              │
+                                      │     - Boundary               │
+                                      │  4. esp_camera_fb_return()   │
+                                      │  5. Loop (ส่งภาพต่อเนื่อง)   │
+                                      └──────────────────────────────┘
+
+================================================================================
+ปัญหาที่พบและแก้ไข
+================================================================================
+
+1. ❌ Camera Initialization Failed (Error 0x105)
+   ✅ แก้ไข: เปลี่ยน Camera Pin Configuration ให้ตรงกับบอร์ด CB008
+   - เดิมใช้ Pins สำหรับ Freenove ESP32-S3 WROOM (OV2640)
+   - แก้เป็น Pins ของ CB008 ESP32-S3 CAM (OV5640)
+
+2. ❌ WiFi Connection Failed (5GHz Network)
+   ✅ แก้ไข: เปลี่ยนจาก "Sorn-A5G" เป็น "Sorn-A-2.4G"
+   - ESP32 รองรับเฉพาะ WiFi 2.4GHz
+
+3. ❌ Serial Monitor ไม่แสดงข้อความ
+   ✅ แก้ไข: เปลี่ยนการตั้งค่าจาก USB-OTG เป็น USB-UART
+   - เปลี่ยน ARDUINO_USB_CDC_ON_BOOT=1 → 0
+   - เชื่อมต่อ Serial Monitor ที่ช่อง USB-UART
+
+4. ❌ mDNS ไม่ทำงาน (DNS_PROBE_FINISHED_NXDOMAIN)
+   ✅ แก้ไข: เพิ่ม ESPmDNS library และ MDNS.begin()
+   - ต้อง upload โค้ดใหม่ให้ mDNS ทำงาน
+   - macOS/iOS รองรับ mDNS โดยอัตโนมัติ
+
+================================================================================
+ไฟล์สำคัญในโปรเจค
+================================================================================
+
+1. platformio.ini
+   - การตั้งค่าบอร์ด: freenove_esp32_s3_wroom
+   - Partition: huge_app.csv (สำหรับโค้ดขนาดใหญ่)
+   - Library: esp32-camera
+   - Build flags: ARDUINO_USB_CDC_ON_BOOT=0
+
+2. src/main.cpp
+   - โค้ดหลักทั้งหมด (391 บรรทัด)
+   - Camera Pin Configuration
+   - WiFi Connection Logic
+   - HTTP Server Implementation
+   - HTML Web Interface
+   - MJPEG Streaming Handler
+
+3. summary_project.txt
+   - เอกสารสรุปโปรเจค (ไฟล์นี้)
+
+================================================================================
+การใช้งาน
+================================================================================
+
+## การ Compile และ Upload
+
+1. เปิด VSCode พร้อม PlatformIO Extension
+2. ปิด Serial Monitor (ถ้าเปิดอยู่)
+3. กดปุ่ม BOOT บนบอร์ด ESP32-S3 ค้างไว้
+4. Run: ~/.platformio/penv/bin/platformio run --target upload
+5. รอเห็น "Connecting..." แล้วปล่อยปุ่ม BOOT
+6. รอจนอัพโหลดเสร็จ
+
+## การดู Serial Monitor
+
+1. เปิด Serial Monitor (115200 baud)
+2. กดปุ่ม RESET บนบอร์ด
+3. จะเห็นข้อความ:
+   - Camera initialized successfully
+   - WiFi connected!
+   - IP Address: 192.168.1.xxx
+   - mDNS started: http://camera01.local
+   - CAMERA READY!
+
+## การเข้าถึงกล้อง
+
+1. เปิดเว็บเบราว์เซอร์
+2. ไปที่:
+   - http://camera01.local (แนะนำ)
+   - หรือ http://192.168.1.xxx
+3. จะเห็นหน้าเว็บพร้อมภาพสดจากกล้อง
+
+================================================================================
+ข้อมูลทางเทคนิค
+================================================================================
+
+## Camera Configuration
+- Frame Size: UXGA (1600x1200) with PSRAM
+- JPEG Quality: 10 (with PSRAM) / 12 (without PSRAM)
+- Frame Buffer: 2 buffers (with PSRAM) / 1 buffer (without PSRAM)
+- Grab Mode: CAMERA_GRAB_LATEST (with PSRAM)
+
+## Network Configuration
+- Protocol: HTTP (Port 80)
+- Streaming: MJPEG (multipart/x-mixed-replace)
+- mDNS Hostname: camera01.local
+- WiFi Mode: Station (STA)
+
+## Memory Usage
+- RAM: 17.7% (57,904 / 327,680 bytes)
+- Flash: 26.1% (821,433 / 3,145,728 bytes)
+
+================================================================================
+อ้างอิง
+================================================================================
+
+- ESP32-S3 Datasheet: https://www.espressif.com/en/products/socs/esp32-s3
+- ESP32 Camera Library: https://github.com/espressif/esp32-camera
+- PlatformIO Documentation: https://docs.platformio.org/
+- mDNS (Bonjour): https://developer.apple.com/bonjour/
+
+================================================================================
+ผู้พัฒนา
+================================================================================
+
+ชื่อ: Sorn
+Email: likit.tronics@gmail.com
+GitHub: sorn-AI
+วันที่: 2026-01-02
+
+================================================================================
+License
+================================================================================
+
+MIT License - สามารถนำไปใช้งาน แก้ไข และแจกจ่ายได้อย่างอิสระ
+
+================================================================================
