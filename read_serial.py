@@ -4,7 +4,7 @@ import time
 
 try:
     # เปิด Serial port
-    ser = serial.Serial('/dev/cu.usbmodem1101', 115200, timeout=1)
+    ser = serial.Serial('/dev/cu.usbmodem1101', 115200, timeout=1) // for macOS
     print("Connected to ESP32-S3 Serial Monitor")
     print("=" * 50)
 
